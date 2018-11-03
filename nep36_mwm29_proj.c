@@ -11,7 +11,8 @@
 #include<stdlib.h>
 #include<stdint.h>
 
-#define INPUT_SIZE 1000
+/*Definitions*/
+#define INPUT_SIZE 1000 //amount of instructions that can be taken in by a file
 
 /*Instruction struct to take in all of the instruction types*/
 struct instruction {
@@ -51,18 +52,28 @@ struct float_Reg {
 	float F_num[32];
 };
 
+/*Memory unit to have a distinction between integer and floating point values*/
+struct memUnit {
+	uint32_t intMem;
+	float floatMem;
+	char type;
+};
+
 /*Function declarations*/
 void initRegs(struct int_Reg *iR, struct float_Reg *fR);
 void writeIntReg(struct int_Reg *iR, char *reg, uint32_t val);
 void writeFloatReg(struct float_Reg *fR, char *reg, float val);
+void storeMemory(struct memUnit *memData, int regtempVal, float regtempValFP, int regtempValInt, char type);
+char detType(char *type);
 uint32_t getIntReg(struct int_Reg *iR, char *reg);
 float getFloatReg(struct float_Reg *fR, char *reg);
+struct memUnit memRetr(struct memUnit *memData, int memNum);
 int regLookup(char *reg);
 void assignInstr(struct instruction *instr, char *temp);
 void printInstr(struct instruction instr);
 void showIntReg(struct int_Reg *iR);
 void showFPReg(struct float_Reg *fR);
-void showMemory(double memData[256]);
+void showMemory(struct memUnit *memData);
 
 int main(int argc, char **argv)
 {
@@ -71,8 +82,7 @@ int main(int argc, char **argv)
 	struct float_Reg fR;
 	initRegs(&iR, &fR); //initialize integer and floating point regsiters
 	
-	//static struct instruction *entry; //instruction struct for taking in new instructions
-	struct instruction entry[INPUT_SIZE];
+	struct instruction entry[INPUT_SIZE]; //instruction struct for taking in new instructions
 	struct instruction IS, EX, MEM, WB, COM; //instruction structs for pipeline stages
 	
 	char *fileName; //text file name
@@ -88,22 +98,25 @@ int main(int argc, char **argv)
 	int MemInits;
 	int numInstr;
 	
-	double memData[256];
+	struct memUnit memData[64]; //memory array is 64W
 	int i;
-	for(i = 0; i < 256; i++) {
-		memData[i] = 0;
-	}
+	for(i = 0; i < 64; i++) { //initialize memory
+		memData[i].intMem = 0;
+		memData[i].floatMem = 0;
+		memData[i].type = 0;
+	} //end if
 	
-	if (argc == 1) {
+	if (argc == 1) { //exit if no text file to read from
+		printf("No input file. Stopping program\n");
 		exit(0);
-	}
+	} //end if
 	
 	fileName = argv[1]; //Retrieve file name and open it
 	trace_fd = fopen(fileName, "rb");
 	if (!trace_fd) { //if file cannot be open, exit program
 		fprintf(stdout, "\ntrace file %s not opened.\n\n", fileName);
 		exit(0);
-	}
+	} //end if
 
 	//read text file inputs
 	fscanf(trace_fd, "%d %d %d %d", &intAdd_rs, &intAdd_EX_Cycles, &intAdd_MEM_cycles, &intAdd_FUs);
@@ -123,79 +136,102 @@ int main(int argc, char **argv)
 	printf("%d %d %d\n", IntregInits, FPregInits, MemInits);
 	printf("%d\n", numInstr);*/
 	
-	char regtemp[50];
+	char regtemp[50]; //temporaries for reading in values
 	uint32_t regtempVal;
-	float regtempValFP;
-	for(i = 0; i < IntregInits; i++) {
+	float regtempValFP = 0;
+	int regtempValInt = 0;
+	char tempReg[50];
+	for(i = 0; i < IntregInits; i++) { //read in integer register initializations
 		fscanf(trace_fd, "%s %d", regtemp, &regtempVal);
 		writeIntReg(&iR, regtemp, regtempVal);
-	}
+	} //end for
     
-	for(i = 0; i < FPregInits; i++) {
+	for(i = 0; i < FPregInits; i++) { //read in floating point register initializations
 		fscanf(trace_fd, "%s %f", regtemp, &regtempValFP);
 		writeFloatReg(&fR, regtemp, regtempValFP);
-	}
+	} //end for
 
-	for(i = 0; i < MemInits; i++) {
-		fscanf(trace_fd, "%s %d %f", regtemp, &regtempVal, &regtempValFP);
-		memData[regtempVal] = regtempValFP;
-	}
+	char type;
+	for(i = 0; i < MemInits; i++) { //read in memory initializations
+		fscanf(trace_fd, "%s %d %s", regtemp, &regtempVal, tempReg);
+		type = detType(tempReg);
+		if(type == 0) {
+			regtempValInt = atoi(tempReg);
+		}else {
+			regtempValFP = atof(tempReg);
+		} //end if else
+		storeMemory(memData, regtempVal/4, regtempValFP, regtempValInt, type);
+	} //end for
 	
 	//Test if inputs were read in correctly
 	/*showIntReg(&iR);
 	showFPReg(&fR);
 	showMemory(memData);*/
 	
-	//entry = (struct instruction *)malloc(sizeof(struct instruction)*numInstr);
-	for(i = 0; i < numInstr; i++) {
-		fscanf(trace_fd, "%s", regtemp);
-		assignInstr(&entry[i], regtemp);
+	for(i = 0; i < numInstr; i++) { //Grab all of the instructions from the text
+		fscanf(trace_fd, "%s", regtemp); //read in instruction
+		assignInstr(&entry[i], regtemp); //decode instruction 
 		switch(entry[i].type) {
-			case ti_Ld:
+			case ti_Ld: //Load case
 				fscanf(trace_fd, "%*c %3[^,] %*c %d %*c %3[^)] %*c", entry[i].Fa, &entry[i].offset, entry[i].Ra);
 				break;
-			case ti_Sd:
+			case ti_Sd: //Store case
 				fscanf(trace_fd, "%*c %3[^,] %*c %d %*c %3[^)] %*c", entry[i].Fa, &entry[i].offset, entry[i].Ra);
 				break;		
-			case ti_Beq:
+			case ti_Beq: //Branch if equal case
 				fscanf(trace_fd, "%*c %3[^,] %*c %3[^,] %*c %d", entry[i].Rs, entry[i].Rt, &entry[i].offset);
 				break;		
-			case ti_Bne:
+			case ti_Bne: //Branch if not equal case
 				fscanf(trace_fd, "%*c %3[^,] %*c %3[^,] %*c %d", entry[i].Rs, entry[i].Rt, &entry[i].offset);
 				break;		
-			case ti_Add:
+			case ti_Add: //Integer addition case
 				fscanf(trace_fd, "%*c %3[^,] %*c %3[^,] %*c %s", entry[i].Ra, entry[i].Rs, entry[i].Rt);
 				break;		
-			case ti_Addd:
+			case ti_Addd: //Floating point addition case
 				fscanf(trace_fd, "%*c %3[^,] %*c %3[^,] %*c %s", entry[i].Fa, entry[i].Fs, entry[i].Ft);
 				break;		
-			case ti_Addi:
+			case ti_Addi: //Integer Immediate addition case
 				fscanf(trace_fd, "%*c %3[^,] %*c %3[^,] %*c %d", entry[i].Rt, entry[i].Rs, &entry[i].offset);
 				break;		
-			case ti_Sub:
+			case ti_Sub: //Integer subtraction
 				fscanf(trace_fd, "%*c %3[^,] %*c %3[^,] %*c %s", entry[i].Ra, entry[i].Rs, entry[i].Rt);
 				break;		
-			case ti_Subd:
+			case ti_Subd: //Floating point subtraction
 				fscanf(trace_fd, "%*c %3[^,] %*c %3[^,] %*c %s", entry[i].Fa, entry[i].Fs, entry[i].Ft);
 				break;		
-			case ti_Multd:
+			case ti_Multd: //Floating point multiplication
 				fscanf(trace_fd, "%*c %3[^,] %*c %3[^,] %*c %s", entry[i].Fa, entry[i].Fs, entry[i].Ft);
 				break;		
-		}
-		//printInstr(entry[i]);
-	}
+		} //end switch
+	} //end for
   
+	fclose(trace_fd); //close trace file
+  
+	//Test Instruction decode and store functions
+	/*for(i = 0; i < numInstr; i++) {
+		printInstr(entry[i]);
+	}*/
+	
 	//Test Get functions
 	/*printf("R2 = %d\n", getIntReg(&iR, "R2"));
-	printf("F2 = %.2f\n", getFloatReg(&fR, "F2"));*/
+	printf("F2 = %.2f\n", getFloatReg(&fR, "F2"));
+	struct memUnit temporaryMem = memRetr(memData, 8/4);
+	if(temporaryMem.type == 0) {
+		printf("Mem[8] = %d\n", temporaryMem.intMem);
+	}else {
+		printf("Mem[8] = %.2f\n", temporaryMem.floatMem);
+	} //end if else*/
+	
+	/*---------Write code for algorithm below. Everything above is formatting---------*/
   
-	//free(entry);
-	fclose(trace_fd);
+  
+    /*---------Write code for algorithm above. Everything below is formatting---------*/
+	
 	return 1;
   
-}
+} //end main
 
-//Initialize Integer and floating point register files
+/*Initialize Integer and floating point register files*/
 void initRegs(struct int_Reg *iR, struct float_Reg *fR) {
 	int i;
 	for(i = 0; i < 32; i++) {
@@ -205,35 +241,76 @@ void initRegs(struct int_Reg *iR, struct float_Reg *fR) {
 			iR->canWrite[i] = 0;
 		}else {
 			iR->canWrite[i] = 1;
-		}
-	}
-}
+		} //end if else
+	} //end for
+} //end initRegs
 
 /*Write to the specified integer register*/
 void writeIntReg(struct int_Reg *iR, char *reg, uint32_t val) {
-	int rN = regLookup(reg);
-	if(iR->canWrite[rN]==1) {
+	int rN = regLookup(reg); //decode register number
+	if(iR->canWrite[rN]==1) { //if register number is not restricted, write to it
 		iR->R_num[rN] = val;
-	}
-}
+	} //end if
+}// end writeIntReg
 
 /*Write to the specified floating point register*/
 void writeFloatReg(struct float_Reg *fR, char *reg, float val) {
-	int rN = regLookup(reg);
+	int rN = regLookup(reg); //decode register number
 	fR->F_num[rN] = val;
-}
+} //end writeFloatReg
+
+/*Write to the specified memory location*/
+void storeMemory(struct memUnit *memData, int regtempVal, float regtempValFP, int regtempValInt, char type) {
+	if(type == 0) { //if the value to be stored is an integer
+		memData[regtempVal].type = 0;
+		memData[regtempVal].intMem = regtempValInt;
+	}else { //if the value to be stored is a floating point
+		memData[regtempVal].type = 1;
+		memData[regtempVal].floatMem = regtempValFP;
+	} //end if else
+} //end storeMemory
+
+/*Determine if the number is a float or an int value*/
+char detType(char *type) {
+	char *p = type;
+	char ret = 0;
+	while (*p) { // While there are more characters to process
+		if (*p=='.') {
+			ret = 1;
+			break;
+		} else { // Otherwise, move on to the next character.
+			p++;
+		} //end if else
+	} //end while
+	return ret;
+} //end detType
 
 /*Get the specified integer register*/
-uint32_t getIntReg (struct int_Reg *iR, char *reg) {
-	int rN = regLookup(reg);
+uint32_t getIntReg(struct int_Reg *iR, char *reg) {
+	int rN = regLookup(reg); //decode register number
 	return iR->R_num[rN];
-}
+} //end getIntReg
 
 /*Get the specified floating point register*/
 float getFloatReg(struct float_Reg *fR, char *reg) {
-	int rN = regLookup(reg);
+	int rN = regLookup(reg); //decode register number
 	return fR->F_num[rN];
-}
+} //end getFloatReg
+
+/*Get the specified value from memory*/
+struct memUnit memRetr(struct memUnit *memData, int memNum) {
+	struct memUnit ret;
+	if(memData[memNum].type == 0) {
+		ret.type = 0;
+		ret.intMem = memData[memNum].intMem;
+		ret.floatMem = 0;
+	}else {
+		ret.type = 1;
+		ret.intMem = 0;
+		ret.floatMem = memData[memNum].floatMem;
+	} //end if else
+	return ret;
+} //end memRetr
 
 /*Given the register string, find the register number*/
 int regLookup(char *reg) {
@@ -244,10 +321,10 @@ int regLookup(char *reg) {
 			ret = strtol(p, &p, 10); // Read number
 		} else { // Otherwise, move on to the next character.
 			p++;
-		}
-	}
+		} //end if else
+	} //end while
 	return ret;
-}
+} //end regLookup
 
 /*Assign the type field of the instruction*/
 void assignInstr(struct instruction *instr, char *temp) {
@@ -271,8 +348,8 @@ void assignInstr(struct instruction *instr, char *temp) {
 		instr->type = ti_Subd;
 	}else {
 		instr->type = ti_Multd;
-	}
-}
+	} //end if else
+} //end assignInstr
 
 /*print the instruction*/
 void printInstr(struct instruction instr) {
@@ -307,35 +384,42 @@ void printInstr(struct instruction instr) {
 		case ti_Multd:
 			printf("Mult.d %s, %s, %s", instr.Fa, instr.Fs, instr.Ft);
 			break;		
-	}
+	} //end switch
 	printf("\n");
-}
+}//end printInstr
 
-/*Show contents of integer register files*/
+/*Show contents of integer register files if non-zero*/
 void showIntReg(struct int_Reg *iR) {
 	int i;
 	for(i = 0; i < 32; i++) {
 		if(iR->R_num[i] != 0) {	
 			printf("R%d = %d\n",i, iR->R_num[i]);
-		}
-	}
-}
+		} //end if
+	} //end for
+} //end showIntReg
 
-/*Show contents of floating point register files*/
+/*Show contents of floating point register files if non-zero*/
 void showFPReg(struct float_Reg *fR) {
 	int i;
 	for(i = 0; i < 32; i++) {
 		if(fR->F_num[i] !=0) {
 			printf("F%d = %.2f\n",i, fR->F_num[i]);
-		}
-	}	
-}
+		} //end if
+	} //end for	
+} //end showFPReg
 
-void showMemory(double *memData) {
+/*show contents of memory if non-zero*/
+void showMemory(struct memUnit *memData) {
 	int i;
-	for(i = 0; i < 256; i+=4) {
-		if(memData[i] != 0) {
-			printf("Mem[%d] = %.2lf\n", i, memData[i]);
-		}
-	}	
-}
+	for(i = 0; i < 64; i++) {
+		if(memData[i].type == 0) {
+			if(memData[i].intMem != 0) {
+				printf("Mem[%d] = %d\n", i*4, memData[i].intMem);
+			} //end if
+		}else {
+			if(memData[i].floatMem != 0) {
+				printf("Mem[%d] = %.2f\n", i*4, memData[i].floatMem);
+			} //end if
+		} //end if else
+	}// end for
+} //end showMemory
