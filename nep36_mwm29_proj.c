@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include<stdlib.h>
 #include<stdint.h>
+#include "struct_defs.h"
 
 /*Definitions*/
 #define INPUT_SIZE 1000 //amount of instructions that can be taken in by a file
@@ -128,13 +129,13 @@ int main(int argc, char **argv)
 	fscanf(trace_fd, "%d", &numInstr);
 	
 	//Test if inputs were read in correctly
-	/*printf("%d %d %d %d\n", intAdd_rs, intAdd_EX_Cycles, intAdd_MEM_cycles, intAdd_FUs);
+	printf("%d %d %d %d\n", intAdd_rs, intAdd_EX_Cycles, intAdd_MEM_cycles, intAdd_FUs);
 	printf("%d %d %d %d\n", FPAdd_rs, FPAdd_EX_Cycles, FPAdd_MEM_cycles, FPAdd_FUs);
 	printf("%d %d %d %d\n", FPMult_rs, FPMult_EX_Cycles, FPMult_MEM_cycles, FPMult_FUs);
 	printf("%d %d %d %d\n", ld_sd_rs, ld_sd_EX_Cycles, ld_sd_MEM_cycles, ld_sd_FUs);
 	printf("%d %d\n", ROB_Entries, CDB_Buffer_Entries);
 	printf("%d %d %d\n", IntregInits, FPregInits, MemInits);
-	printf("%d\n", numInstr);*/
+	printf("%d\n", numInstr);
 	
 	char regtemp[50]; //temporaries for reading in values
 	uint32_t regtempVal;
@@ -164,9 +165,9 @@ int main(int argc, char **argv)
 	} //end for
 	
 	//Test if inputs were read in correctly
-	/*showIntReg(&iR);
+	showIntReg(&iR);
 	showFPReg(&fR);
-	showMemory(memData);*/
+	showMemory(memData);
 	
 	for(i = 0; i < numInstr; i++) { //Grab all of the instructions from the text
 		fscanf(trace_fd, "%s", regtemp); //read in instruction
@@ -208,9 +209,9 @@ int main(int argc, char **argv)
 	fclose(trace_fd); //close trace file
   
 	//Test Instruction decode and store functions
-	/*for(i = 0; i < numInstr; i++) {
+	for(i = 0; i < numInstr; i++) {
 		printInstr(entry[i]);
-	}*/
+	}
 	
 	//Test Get functions
 	/*printf("R2 = %d\n", getIntReg(&iR, "R2"));
