@@ -1,0 +1,8 @@
+Benchmark categories
+
+1) straight-line base cases where no dependencies exist among instructions
+2) straight-line code where there are dependencies (true and false)
+3) straight-line code where there are forwarding among load/store instructions
+4) straight-line code where there are structure hazards in reservation stations and functional unit
+5) simple loop on top of either 1), 2), 3), or 4), or all of them
+6) demonstration of branch prediction
