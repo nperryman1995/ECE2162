@@ -10,7 +10,7 @@
 #include <stdio.h>
 #include<stdlib.h>
 #include<stdint.h>
-#include "struct_defs.h"
+//#include "struct_defs.h"
 
 /*Definitions*/
 #define INPUT_SIZE 1000 //amount of instructions that can be taken in by a file
@@ -25,6 +25,8 @@ struct instruction {
 	char Rt[4];
 	char Ft[4];
 	uint32_t offset; //For both offsets and immediates
+	uint32_t address;
+	unsigned char isValid;
 	//uint32_t PC_Addr;
 };
 
@@ -75,16 +77,27 @@ void printInstr(struct instruction instr);
 void showIntReg(struct int_Reg *iR);
 void showFPReg(struct float_Reg *fR);
 void showMemory(struct memUnit *memData);
+void instShift(struct instruction *stages);
+instFetch(struct instruction *isntr, struct instruction *stages, uint32_t pc_Addr);
+void printPipeline(uint32_t cycle_number, struct instruction *stages);
 
 int main(int argc, char **argv)
 {
 	unsigned int cycle_number = 0;
+	uint32_t pcAddr = 0;
 	struct int_Reg iR;
 	struct float_Reg fR;
 	initRegs(&iR, &fR); //initialize integer and floating point regsiters
 	
 	struct instruction entry[INPUT_SIZE]; //instruction struct for taking in new instructions
-	struct instruction IS, EX, MEM, WB, COM; //instruction structs for pipeline stages
+	struct instruction inst_stages[5]; //instruction structs for pipeline stages
+	
+	//Initialize stages to be NULL
+	inst_stages[0].isValid = 0;
+	inst_stages[1].isValid = 0;
+	inst_stages[2].isValid = 0;
+	inst_stages[3].isValid = 0;
+	inst_stages[4].isValid = 0;
 	
 	char *fileName; //text file name
 	static FILE *trace_fd;
@@ -129,13 +142,13 @@ int main(int argc, char **argv)
 	fscanf(trace_fd, "%d", &numInstr);
 	
 	//Test if inputs were read in correctly
-	printf("%d %d %d %d\n", intAdd_rs, intAdd_EX_Cycles, intAdd_MEM_cycles, intAdd_FUs);
+	/*printf("%d %d %d %d\n", intAdd_rs, intAdd_EX_Cycles, intAdd_MEM_cycles, intAdd_FUs);
 	printf("%d %d %d %d\n", FPAdd_rs, FPAdd_EX_Cycles, FPAdd_MEM_cycles, FPAdd_FUs);
 	printf("%d %d %d %d\n", FPMult_rs, FPMult_EX_Cycles, FPMult_MEM_cycles, FPMult_FUs);
 	printf("%d %d %d %d\n", ld_sd_rs, ld_sd_EX_Cycles, ld_sd_MEM_cycles, ld_sd_FUs);
 	printf("%d %d\n", ROB_Entries, CDB_Buffer_Entries);
 	printf("%d %d %d\n", IntregInits, FPregInits, MemInits);
-	printf("%d\n", numInstr);
+	printf("%d\n", numInstr);*/
 	
 	char regtemp[50]; //temporaries for reading in values
 	uint32_t regtempVal;
@@ -165,9 +178,9 @@ int main(int argc, char **argv)
 	} //end for
 	
 	//Test if inputs were read in correctly
-	showIntReg(&iR);
+	/*showIntReg(&iR);
 	showFPReg(&fR);
-	showMemory(memData);
+	showMemory(memData);*/
 	
 	for(i = 0; i < numInstr; i++) { //Grab all of the instructions from the text
 		fscanf(trace_fd, "%s", regtemp); //read in instruction
@@ -204,14 +217,16 @@ int main(int argc, char **argv)
 				fscanf(trace_fd, "%*c %3[^,] %*c %3[^,] %*c %s", entry[i].Fa, entry[i].Fs, entry[i].Ft);
 				break;		
 		} //end switch
+		entry[i].address = i*4;
+		entry[i].isValid = 1;
 	} //end for
   
 	fclose(trace_fd); //close trace file
   
 	//Test Instruction decode and store functions
-	for(i = 0; i < numInstr; i++) {
+	/*for(i = 0; i < numInstr; i++) {
 		printInstr(entry[i]);
-	}
+	}*/
 	
 	//Test Get functions
 	/*printf("R2 = %d\n", getIntReg(&iR, "R2"));
@@ -224,7 +239,29 @@ int main(int argc, char **argv)
 	} //end if else*/
 	
 	/*---------Write code for algorithm below. Everything above is formatting---------*/
-  
+	//IS, EX, MEM, WB, COM
+	int doneFetch = 0;
+	while(1) { //While there are more instructions to fetch and the pipeline is not empty
+		cycle_number++;
+		if(pcAddr/4 == (numInstr-1)) {
+			instShift(inst_stages);
+			if(doneFetch == 0) {
+				doneFetch = 1;
+				instFetch(entry, inst_stages, pcAddr);
+			}else {
+				inst_stages[0].isValid = 0;
+			}
+			if(inst_stages[4].isValid == 0) {
+				cycle_number--;
+				break;
+			}
+			printPipeline(cycle_number, inst_stages); //print the contents of the pipeline
+		} else {
+			instFetch(entry, inst_stages, pcAddr); //Get the next instruction and put it in the first stage
+			pcAddr = entry[pcAddr/4].address + 4; //get address of next instruction
+			printPipeline(cycle_number, inst_stages); //print the contents of the pipeline
+		}
+	}
   
     /*---------Write code for algorithm above. Everything below is formatting---------*/
 	
@@ -354,6 +391,10 @@ void assignInstr(struct instruction *instr, char *temp) {
 
 /*print the instruction*/
 void printInstr(struct instruction instr) {
+	if(instr.isValid == 0) {
+		printf("No Instruction\n");
+		return;
+	}
 	switch(instr.type) {
 		case ti_Ld:
 			printf("Ld %s, %d(%s)",instr.Fa, instr.offset, instr.Ra);
@@ -424,3 +465,34 @@ void showMemory(struct memUnit *memData) {
 		} //end if else
 	}// end for
 } //end showMemory
+
+/*Shift the pipeline*/
+void instShift(struct instruction *stages) {
+	int i;
+	for(i = 4; i > 0; i--) {
+		stages[i] = stages[i-1];
+	} //end for
+} //end instShift
+
+/*Get the next instruction and put it in the first stage*/
+instFetch(struct instruction *instr, struct instruction *stages, uint32_t pc_Addr) {
+	instShift(stages);
+	stages[0] = instr[pc_Addr/4];
+} //end instFetch
+
+/*Print the contents of the pipeline*/
+void printPipeline(uint32_t cycle_number, struct instruction *stages) {
+	printf("------------------------------------------------\n");
+	printf("Cycle Number = %d\n", cycle_number);
+	printf("Issue: ");
+	printInstr(stages[0]);
+	printf("Ex: ");
+	printInstr(stages[1]);
+	printf("Mem: ");
+	printInstr(stages[2]);
+	printf("WB: ");
+	printInstr(stages[3]);
+	printf("Commit: ");
+	printInstr(stages[4]);
+	printf("------------------------------------------------\n");
+} //end printPipeline
