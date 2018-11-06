@@ -1,0 +1,52 @@
+// This trace contains a if statement inside a for loop (benchmark 5.2 with branch prediction)
+// This trace assumes there is branch prediction (all predictions initially default to 0 i.e. not taken)
+
+// Input file start
+2 1 0 1
+3 3 0 1
+2 20 0 1
+3 1 4 1
+128 1
+3 1 0
+6
+R1 0
+R2 2
+R3 3
+F1 1.1
+Beq R1, R0, 1
+Bne R1, R2, 1
+Mult.d F1, F1, F1
+Addi R1, R1, 1
+Bne R1, R3, -5
+Add.d F1, F1, F1
+// Input file end
+
+// Expected trace
+---- Instruction ----|---- PC ----|---- ISSUE ----|---- EX ----|---- MEM ----|---- WB ----|---- COMMIT ----|
+Beq R1, R0, 1        | 0x00000000 | 1             | 2          | X           | X          | 4              | -- predicted wrong
+Mult.d F1, F1, F1    | 0x00000008 | 4             | 5 - 24     | X           | 25         | 26             |
+Addi R1, R1, 1       | 0x0000000C | 5             | 6          | X           | 7          | 27             |
+Bne R1, R3, -5       | 0x00000010 | 6             | 8          | X           | X          | 28             | -- predicted wrong
+
+Beq R1, R0, 1        | 0x00000000 | 10            | 11         | X           | X          | 29             | -- predicted wrong
+Bne R1, R2, 1        | 0x00000004 | 13            | 14         | X           | X          | 30             | -- predicted wrong
+Addi R1, R1, 1       | 0x0000000C | 16            | 17         | X           | 18         | 31             |
+Bne R1, R3, -5       | 0x00000010 | 17            | 18         | X           | X          | 32             | -- predicted correct
+
+Beq R1, R0, 1        | 0x00000000 | 18            | 19         | X           | X          | 33             | -- predicted correct
+Bne R1, R2, 1        | 0x00000004 | 19            | 20         | X           | X          | 34             | -- predicted wrong
+Mult.d F1, F1, F1    | 0x00000008 | 22            | 25 - 44    | X           | 45         | 46             |
+Addi R1, R1, 1       | 0x0000000C | 23            | 24         | X           | 25         | 47             |
+Bne R1, R3, -5       | 0x00000010 | 24            | 26         | X           | X          | 48             | -- predicted wrong
+Add.d F1, F1, F1     | 0x00000014 | 24            | 46 - 48    | X           | 49         | 50             |
+
+
+// Non zero int registers
+R1 3
+R2 2
+R3 3
+
+// Non zero float registers
+F1 2.9282
+
+// Non zero mem locations
