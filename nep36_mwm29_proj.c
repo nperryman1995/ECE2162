@@ -10,57 +10,12 @@
 #include <stdio.h>
 #include<stdlib.h>
 #include<stdint.h>
-//#include "struct_defs.h"
+#include<string.h>
+#include <ctype.h>
+#include "struct_defs.h"
 
 /*Definitions*/
 #define INPUT_SIZE 1000 //amount of instructions that can be taken in by a file
-
-/*Instruction struct to take in all of the instruction types*/
-struct instruction {
-	unsigned char type;
-	char Ra[4];
-	char Fa[4];
-	char Rs[4];
-	char Fs[4];
-	char Rt[4];
-	char Ft[4];
-	uint32_t offset; //For both offsets and immediates
-	uint32_t address;
-	unsigned char isValid;
-	//uint32_t PC_Addr;
-};
-
-/*Encoding for instruction struct type*/
-enum opcode_type {
-	ti_Ld = 0, //Load a single precision floating point value
-	ti_Sd, //Store a single precision floating point value to memory
-	ti_Beq, //Branch if equal
-	ti_Bne, //Branch if not equal
-	ti_Add, //Integer addition
-	ti_Addd, //Floating point addition
-	ti_Addi, //Integer addition with immediate
-	ti_Sub, //Integer subtraction
-	ti_Subd, //Floating point subtraction
-	ti_Multd //Floating point multiplication
-};
-
-/*32 integer register files*/
-struct int_Reg {
-	uint32_t R_num[32];
-	char canWrite[32];
-};
-
-/*32 floating point register files*/
-struct float_Reg {
-	float F_num[32];
-};
-
-/*Memory unit to have a distinction between integer and floating point values*/
-struct memUnit {
-	uint32_t intMem;
-	float floatMem;
-	char type;
-};
 
 /*Function declarations*/
 void initRegs(struct int_Reg *iR, struct float_Reg *fR);
@@ -78,7 +33,7 @@ void showIntReg(struct int_Reg *iR);
 void showFPReg(struct float_Reg *fR);
 void showMemory(struct memUnit *memData);
 void instShift(struct instruction *stages);
-instFetch(struct instruction *isntr, struct instruction *stages, uint32_t pc_Addr);
+void instFetch(struct instruction *isntr, struct instruction *stages, uint32_t pc_Addr);
 void printPipeline(uint32_t cycle_number, struct instruction *stages);
 
 int main(int argc, char **argv)
@@ -475,7 +430,7 @@ void instShift(struct instruction *stages) {
 } //end instShift
 
 /*Get the next instruction and put it in the first stage*/
-instFetch(struct instruction *instr, struct instruction *stages, uint32_t pc_Addr) {
+void instFetch(struct instruction *instr, struct instruction *stages, uint32_t pc_Addr) {
 	instShift(stages);
 	stages[0] = instr[pc_Addr/4];
 } //end instFetch
