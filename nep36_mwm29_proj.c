@@ -17,6 +17,8 @@
 /*Definitions*/
 #define INPUT_SIZE 1000 //amount of instructions that can be taken in by a file
 
+struct branch_pred_entry branch_predictor[INPUT_SIZE];
+
 int main(int argc, char **argv)
 {
 	unsigned int cycle_number = 1;
@@ -47,7 +49,7 @@ int main(int argc, char **argv)
 		MEM[i] = 0;
 		WB[i] = 0;
 		COM[i] = 0;
-
+		branch_predictor[i].prediction = 0;
 	}
 	
 	char *fileName; //text file name
@@ -199,6 +201,9 @@ int main(int argc, char **argv)
 			}
 		}else {
 			instFetch(entry, inst_stages, pcAddr); //Get the next instruction and put it in the first stage
+		}
+		if(inst_stages[0].isValid == 1 && (inst_stages[0].type == ti_Beq || inst_stages[0].type == ti_Bne)){
+			//make a branch prediction
 		}
 		if(inst_stages[1].isValid == 1) { //if an instruction needs to be dealt with in the EX stage
 			exExecution(inst_stages[1], &iR, &fR, memData);

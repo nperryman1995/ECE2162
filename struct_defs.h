@@ -100,7 +100,7 @@ struct float_mult_stage { // Float mult is pipelined. Need an array of stages to
 } float_mult_stage;
 
 // Branch Target Buffer. Contains 8 entries as per the Branch Unit description
-struct instruction *BTB_array[8]; // Stores the instruction that is predicted to be fetched after a branch
+struct instruction BTB_array[8]; // Stores the instruction that is predicted to be fetched after a branch
 
 
 struct branch_pred_entry { // One entry of the branch predictor. Array of them makes the entire predictor
@@ -120,6 +120,20 @@ void initRegs(struct int_Reg *iR, struct float_Reg *fR) {
 		} //end if else
 	} //end for
 } //end initRegs
+
+/*Given the register string, find the register number*/
+int regLookup(char *reg) {
+	char *p = reg;
+	int ret = 0;
+	while (*p) { // While there are more characters to process
+		if ( isdigit(*p) || ( (*p=='-'||*p=='+') && isdigit(*(p+1)) )) {
+			ret = strtol(p, &p, 10); // Read number
+		} else { // Otherwise, move on to the next character.
+			p++;
+		} //end if else
+	} //end while
+	return ret;
+} //end regLookup
 
 /*Write to the specified integer register*/
 void writeIntReg(struct int_Reg *iR, char *reg, uint32_t val) {
@@ -157,20 +171,6 @@ float memRetr(float *memData, int memNum) {
 	float ret = memData[memNum];
 	return ret;
 } //end memRetr
-
-/*Given the register string, find the register number*/
-int regLookup(char *reg) {
-	char *p = reg;
-	int ret = 0;
-	while (*p) { // While there are more characters to process
-		if ( isdigit(*p) || ( (*p=='-'||*p=='+') && isdigit(*(p+1)) )) {
-			ret = strtol(p, &p, 10); // Read number
-		} else { // Otherwise, move on to the next character.
-			p++;
-		} //end if else
-	} //end while
-	return ret;
-} //end regLookup
 
 /*Assign the type field of the instruction*/
 void assignInstr(struct instruction *instr, char *temp) {
@@ -408,7 +408,7 @@ void FPMult(struct instruction instr, struct float_Reg *fR) {
 	fR->F_num[ra] = temp;
 } //end FPMult
 
-instExecute(struct instruction instr, struct int_Reg *iR, struct float_Reg *fR, float *memData) {
+void instExecute(struct instruction instr, struct int_Reg *iR, struct float_Reg *fR, float *memData) {
 	switch(instr.type) {
 		case ti_Ld: //Load case
 			inst_load(instr, iR, fR, memData);
