@@ -187,23 +187,46 @@ int main(int argc, char **argv)
 	/*---------Write code for algorithm below. Everything above is formatting---------*/
 	//IS, EX, MEM, WB, COM
 	int noFetch = 0;
+	int branch_squash = 0;
+	int next_branch_squash = 0;
+	int b_pred_old_pcAddr = 0;
+	int post_squash_pcAddr = 0;
+	int pred_pcAddr = -1;
 	while(1) { //While there are more instructions to fetch and the pipeline is not empty
 		instShift(inst_stages);
-		if(noFetch == 1 && checkPipeline(inst_stages) == 0) {
-			break;
-		}
-		if((pcAddr/4 == (numInstr-1))) {
-			if(noFetch == 0) {
-				noFetch = 1;
-				instFetch(entry, inst_stages, pcAddr); //Get the next instruction and put it in the first stage
-			}else {
-				inst_stages[0].isValid = 0;
+		branch_squash = next_branch_squash;
+		if(branch_squash == 0){//don't fetch when squashing
+			if(noFetch == 1 && checkPipeline(inst_stages) == 0) {
+				break;
 			}
-		}else {
-			instFetch(entry, inst_stages, pcAddr); //Get the next instruction and put it in the first stage
+			if((pcAddr/4 == (numInstr-1))) {
+				if(noFetch == 0) {
+					noFetch = 1;
+					instFetch(entry, inst_stages, pcAddr); //Get the next instruction and put it in the first stage
+				}else {
+					inst_stages[0].isValid = 0;
+				}
+			}else {
+				instFetch(entry, inst_stages, pcAddr); //Get the next instruction and put it in the first stage
+			}
+		}else{
+			//do the squashing
+			//find branch in ROB
+			//for each valid in ROB after branch (will actually be a while loop)
+			//	squash it in RS, LSQ, FU, CDB
 		}
-		if(inst_stages[0].isValid == 1 && (inst_stages[0].type == ti_Beq || inst_stages[0].type == ti_Bne)){
+		post_squash_pcAddr = inst_stages[1].address + inst_stages[1].offset * 4 + 4;
+		if(inst_stages[1].isValid == 1 && (inst_stages[1].type == ti_Beq || inst_stages[1].type == ti_Bne) && pcAddr != post_squash_pcAddr ){
+			//will need to squash starting next cycle
+			next_branch_squash = 1;
+			//update branch predictor
+			branch_predictor[inst_stages[1].address/4] = branch_predictor[inst_stages[1].address/4] ^ 1;//XOR flips 0->1 or 1->0
+		}
+		if(inst_stages[0].isValid == 1 && (inst_stages[0].type == ti_Beq || inst_stages[0].type == ti_Bne) && next_branch_squash == 0){
 			//make a branch prediction
+			if(branch_predictor[pcAddr/4] == 1){
+				pred_pcAddr = inst_stages[0].address + inst_stages[0].offset * 4 + 4;
+			}
 		}
 		if(inst_stages[1].isValid == 1) { //if an instruction needs to be dealt with in the EX stage
 			exExecution(inst_stages[1], &iR, &fR, memData);
@@ -228,7 +251,12 @@ int main(int argc, char **argv)
 		if(inst_stages[4].isValid == 1) {
 			COM[(inst_stages[4].address)/4] = cycle_number;
 		}
-		pcAddr = pcAddr + 4;
+		if(pred_pcAddr == -1){
+			pcAddr = pcAddr + 4;
+		}else{
+			pcAddr = pred_pcAddr;
+			pred_pcAddr = -1;
+		}
 		//printPipeline(cycle_number, inst_stages); //print the contents of the pipeline
 		cycle_number++;
 	}
