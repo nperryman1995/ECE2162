@@ -1,11 +1,10 @@
 /**************************************************************/
 /* ECE 2162
- Noah Perryman
- Mitchell Moran
- compile instructions: 
- Execution Instructions
- ./
- ***************************************************************/
+ * Noah Perryman
+ * Mitchell Moran
+ * Project Phase II
+*/
+/***************************************************************/
 
 #include <stdio.h>
 #include<stdlib.h>
@@ -182,7 +181,6 @@ int main(int argc, char **argv)
 		printf("Mem[8] = %.2f\n", temporaryMem.floatMem);
 	} //end if else*/
 	
-	/*---------Write code for algorithm below. Everything above is formatting---------*/
 	//IS, EX, MEM, WB, COM
 	int noFetch = 0;
 	while(1) { //While there are more instructions to fetch and the pipeline is not empty
@@ -232,8 +230,6 @@ int main(int argc, char **argv)
 	showIntReg(&iR);
 	showFPReg(&fR);
 	showMemory(memData);
-  
-    /*---------Write code for algorithm above. Everything below is formatting---------*/
 	
 	return 1;
   

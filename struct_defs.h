@@ -163,7 +163,7 @@ int regLookup(char *reg) {
 	char *p = reg;
 	int ret = 0;
 	while (*p) { // While there are more characters to process
-		if ( isdigit(*p) || ( (*p=='-'||*p=='+') && isdigit(*(p+1)) )) {
+		if (isdigit(*p)) {
 			ret = strtol(p, &p, 10); // Read number
 		} else { // Otherwise, move on to the next character.
 			p++;
@@ -348,7 +348,13 @@ void intAdd(struct instruction instr, struct int_Reg *iR) {
 	int rs = regLookup(instr.Rs); //decode register number
 	int rt = regLookup(instr.Rt); //decode register number
 
-	iR->R_num[ra] = iR->R_num[rs] + iR->R_num[rt];
+	int temp = iR->R_num[rs] + iR->R_num[rt];
+	if(temp > 2147483647) { //cap to maximum/minimum int value
+		temp = 2147483647;
+	}else if(temp < -2147483648) {
+		temp = -2147483648;
+	}
+	iR->R_num[ra] = temp;
 } //end intAdd
 
 /*Floating Point Addition*/
@@ -358,8 +364,10 @@ void FPAdd(struct instruction instr, struct float_Reg *fR) {
 	int rt = regLookup(instr.Ft); //decode register number
 	
 	float temp = fR->F_num[rs] + fR->F_num[rt];
-	if(temp > 3.402823466e+38F) { //cap to maximum floating point value
+	if(temp > 3.402823466e+38F) { //cap to maximum/minimum floating point value
 		temp = 3.402823466e+38F;
+	}else if(temp < -3.402823466e+38F) {
+		temp = -3.402823466e+38F;
 	}
 	fR->F_num[ra] = temp;
 } //end FPAdd
@@ -370,7 +378,13 @@ void immAdd(struct instruction instr, struct int_Reg *iR) {
 	int rs = regLookup(instr.Rs); //decode register number
 	int rt = regLookup(instr.Rt); //decode register number
 	
-	iR->R_num[rt] = iR->R_num[rs] + immed;
+	int temp = iR->R_num[rs] + immed;
+	if(temp > 2147483647) { //cap to maximum/minimum int value
+		temp = 2147483647;
+	}else if(temp < -2147483648) {
+		temp = -2147483648;
+	}
+	iR->R_num[rt] = temp;
 } //end immAdd
 
 /*Integer Subtraction*/
@@ -379,7 +393,13 @@ void intSub(struct instruction instr, struct int_Reg *iR) {
 	int rs = regLookup(instr.Rs); //decode register number
 	int rt = regLookup(instr.Rt); //decode register number
 
-	iR->R_num[ra] = iR->R_num[rs] - iR->R_num[rt];
+	int temp = iR->R_num[rs] - iR->R_num[rt];
+	if(temp > 2147483647) { //cap to maximum/minimum int value
+		temp = 2147483647;
+	}else if(temp < -2147483648) {
+		temp = -2147483648;
+	}
+	iR->R_num[ra] = temp;
 } //end intSub
 
 /*Floating Point subtraction*/
@@ -389,8 +409,10 @@ void FPSub(struct instruction instr, struct float_Reg *fR) {
 	int rt = regLookup(instr.Ft); //decode register number
 	
 	float temp = fR->F_num[rs] - fR->F_num[rt];
-	if(temp > 3.402823466e+38F) { //cap to maximum floating point value
+	if(temp > 3.402823466e+38F) { //cap to maximum/minimum floating point value
 		temp = 3.402823466e+38F;
+	}else if(temp < -3.402823466e+38F) {
+		temp = -3.402823466e+38F;
 	}
 	fR->F_num[ra] = temp;
 } //end FPSub
@@ -404,6 +426,8 @@ void FPMult(struct instruction instr, struct float_Reg *fR) {
 	float temp = fR->F_num[rs] * fR->F_num[rt];
 	if(temp > 3.402823466e+38F) { //cap to maximum floating point value
 		temp = 3.402823466e+38F;
+	}else if(temp < -3.402823466e+38F) {
+		temp = -3.402823466e+38F;
 	}
 	fR->F_num[ra] = temp;
 } //end FPMult
