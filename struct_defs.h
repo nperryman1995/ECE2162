@@ -43,27 +43,33 @@ struct float_Reg {
 	float F_num[32];
 };
 
-struct RAT_entry { // Register Alias Table entry. Array of them makes the entire RAT
-    int ROB_number;
+struct RAT_entry { // Register Alias Table entry. 
+    unsigned char rType; //0 = ARF, 1 = ROB, 2 = not initialized yet
+	unsigned char iOrf; //integer or floating point register
+	uint32_t rNumber; //destination number
 } RAT_entry;
 
-struct RS_entry { // Reservation Station entry. Array of them makes the entire RS
-    int valid; // is this entry used
-    enum opcode_type op;
-    int ROB_number;
-    int src1; // where is data operand 1 coming from (this will be an ROB entry number)
-    int src2;
-    void *src1_value; // the value of data operand 1
-    void *src2_value;
-    boolean src1_valid; // do we have valid data in value pointer
-    boolean src2_valid;
-} RS_entry;
+struct RS_entry { // Reservation Station entry.
+	uint32_t address; //address of instruction
+	unsigned char type; //type of operation
+	uint32_t dst_tag; //ROB entry number
+	uint32_t tag1; //ROB entry number for operand one
+	uint32_t tag2; //ROB entry number for operand two
+	int iVal1; //Integer Value 1 if Integer RS
+	int iVal2; //Integer Value 2 if Integer RS
+	float fVal1; //FP Value 1 if FP RS
+	float fVal2; //FP Value 2 if FP RS
+	unsigned char isBusy; //0 = available, 1 = busy, 2 = not initialized
+};
 
-struct ROB_entry { // ReOrder Buffer entry. Array of them makes the entire ROB
-    int dest_reg;
-    void *result;
-    boolean ready; // ready to commit
-} ROB_entry;
+struct ROB_entry { // ReOrder Buffer entry.
+	uint32_t address; //address of instruction
+	unsigned char type; //type of operation; 0-9 = operation, 10 = not currently used, 11 = not valid
+	char destReg[4]; //destination register
+	uint32_t intVal; //integer value if integer operation
+	uint32_t floatVal; //floating point value if FP operation
+	unsigned char finOp; //0 means not finished yet, 1 means finished, but not ready to commmit, 2 means finished and can commit
+};
 
 struct LSQ_entry { // Load/Store Queue entry. Array of them makes the entire LSQ
     boolean valid; // is this entry used
@@ -75,33 +81,13 @@ struct LSQ_entry { // Load/Store Queue entry. Array of them makes the entire LSQ
 } LSQ_entry;
 
 struct CDB_buffer { // Buffer for storing data when Common Data Bus is busy
-    int ROB_number;
-    void *value;
-    int arrival_cycle; // what cycle did this data arrive (used to resolve conflicts on the bus)
-    boolean valid;
+    struct RS_entry cdbBuffer;
+	uint32_t arrival_cycle;
+	unsigned char isValid; //0 = valid, 1 = not valid
 } CDB_buffer;
-
-struct int_adder { // This is the entire int adder. It is single cycle so it just needs to store data for one cycle
-    int value;
-    boolean valid;
-    int ROB_number;
-} int_adder;
-
-struct float_adder_stage { // Float adder is pipelined. Need an array of stages to sim pipeline
-    float value;
-    boolean valid;
-    int ROB_number;
-} float_adder_stage;
-
-struct float_mult_stage { // Float mult is pipelined. Need an array of stages to sim pipeline
-    float value;
-    boolean valid;
-    int ROB_number;
-} float_mult_stage;
 
 // Branch Target Buffer. Contains 8 entries as per the Branch Unit description
 struct instruction *BTB_array[8]; // Stores the instruction that is predicted to be fetched after a branch
-
 
 struct branch_pred_entry { // One entry of the branch predictor. Array of them makes the entire predictor
     boolean prediction;
@@ -526,4 +512,23 @@ void printResults(struct instruction *entry, int *IS, int *EX, int *MEM, int *WB
 		printf("\n");
 		printf("\t\t\t%d\t%d\t%d\t%d\t%d\n", IS[i], EX[i], MEM[i], WB[i], COM[i]);
 	}
+}
+
+void iRSFill() {
+	iRS[i].address = forResStat.address;
+	iRS[i].type = forResStat.type;
+	iRS[i].dst_tag =
+	iRS[i].tag1 =
+	iRS[i].tag2 =
+	iRS[i].iVal1 = 
+	iRS[i].iVal2 =
+	iRS[i].isBusy = 1;
+}
+
+fARSFill() {
+	
+}
+
+fMRSFill() {
+	
 }

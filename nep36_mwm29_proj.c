@@ -14,7 +14,8 @@
 #include "struct_defs.h"
 
 /*Definitions*/
-#define INPUT_SIZE 1000 //amount of instructions that can be taken in by a file
+#define INPUT_SIZE 100 //amount of instructions that can be taken in by a file
+#define MAX_ROB 1000 //maximum size of ROB Table
 
 int main(int argc, char **argv)
 {
@@ -24,15 +25,13 @@ int main(int argc, char **argv)
 	struct float_Reg fR;
 	initRegs(&iR, &fR); //initialize integer and floating point regsiters
 	
-	struct instruction entry[INPUT_SIZE]; //instruction struct for taking in new instructions
-	struct instruction inst_stages[5]; //instruction structs for pipeline stages
-	
-	//Initialize stages to be NULL
-	inst_stages[0].isValid = 0;
-	inst_stages[1].isValid = 0;
-	inst_stages[2].isValid = 0;
-	inst_stages[3].isValid = 0;
-	inst_stages[4].isValid = 0;
+	struct instruction entry[INPUT_SIZE]; //instruction struct for taking in new instructions. Instruction buffer
+	struct CDB_buffer cBuffer[INPUT_SIZE]; //cdb buffer entries. capped at input size, but will only utilize a certain amount of them depending on the input parameter
+	struct RS_entry iRS[INPUT_SIZE]; //integer adder reservation station
+	struct RS_entry fARS[INPUT_SIZE]; //fp adder reservation station
+	struct RS_entry fMRS[INPUT_SIZE]; //fp multpilier reservation station
+	struct ROB_entry reOrder[MAX_ROB]; //ReOrder Buffer
+	struct RAT_entry rat_Table[MAX_ROB]; //RAT Table
 	
 	//IS, EX, MEM, WB, COM
 	//Create lookup tables for instruction start and end cycles at each stage
@@ -46,7 +45,15 @@ int main(int argc, char **argv)
 		MEM[i] = 0;
 		WB[i] = 0;
 		COM[i] = 0;
-
+		iRS[i].isBusy = 2;
+		fARS[i].isBusy = 2;
+		fMRS[i].isBusy = 2;
+		cBuffer[i].isValid = 1;
+	}
+	
+	for(i = 0; i < MAX_ROB; i++) {
+		rat_Table[i].rType = 2;
+		reOrder[i].type = 11;
 	}
 	
 	char *fileName; //text file name
@@ -96,6 +103,29 @@ int main(int argc, char **argv)
 	printf("%d %d\n", ROB_Entries, CDB_Buffer_Entries);
 	printf("%d %d %d\n", IntregInits, FPregInits, MemInits);
 	printf("%d\n", numInstr);*/
+	
+	//Initialize reservation stations
+	for(i = 0; i < intAdd_rs; i++) {
+		iRS[i].isBusy = 0;
+	}
+	
+	for(i = 0; i < FPAdd_rs; i++) {
+		fARS[i].isBusy = 0;
+	}
+	
+	for(i = 0; i < FPMult_rs; i++) {
+		fMRS[i].isBusy = 0;
+	}
+	
+	//Initialize cdb buffer
+	for(i = 0; i < CDB_Buffer_Entries; i++) {
+		cBuffer[i].isValid = 0;
+	}
+	
+	//initialize ROB tables
+	for(i = 0; i < ROB_Entries; i++) {
+		reOrder[i].type = 10;
+	}
 	
 	char regtemp[50]; //temporaries for reading in values
 	uint32_t regtempVal;
@@ -182,47 +212,126 @@ int main(int argc, char **argv)
 	} //end if else*/
 	
 	//IS, EX, MEM, WB, COM
-	int noFetch = 0;
-	while(1) { //While there are more instructions to fetch and the pipeline is not empty
-		instShift(inst_stages);
-		if(noFetch == 1 && checkPipeline(inst_stages) == 0) {
-			break;
-		}
-		if((pcAddr/4 == (numInstr-1))) {
-			if(noFetch == 0) {
-				noFetch = 1;
-				instFetch(entry, inst_stages, pcAddr); //Get the next instruction and put it in the first stage
-			}else {
-				inst_stages[0].isValid = 0;
-			}
-		}else {
-			instFetch(entry, inst_stages, pcAddr); //Get the next instruction and put it in the first stage
-		}
-		if(inst_stages[1].isValid == 1) { //if an instruction needs to be dealt with in the EX stage
-			exExecution(inst_stages[1], &iR, &fR, memData);
-		}
-		if(inst_stages[3].isValid == 1) { //If there is a load/store instruciton
-			memExecution(inst_stages[3], &iR, &fR, memData);
+	unsigned char noFetch = 0;
+	unsigned char iRS_Done = 0;
+	unsigned char fARS_Done = 0;
+	unsigned char fMRS_Done = 0;
+	unsigned char rob_Done = 0;
+	uint32_t pcAddrQueue = 0;
+	struct instruction forResStat;
+	unsigned char rsType; //0 = int RS, 1 = fP Add RS, 2 = fp Mult RS
+	unsigned char rsStall = 0; //0 = rs entry available, 1 = no rs entry available (stall)
+	while(1) { //While there are more instructions to fetch and the pipeline is not empty	
+		//Reset Fetch, Reservation Station, and ROB checkers each cycle
+		noFetch = 0;
+		iRS_Done = 0;
+		fARS_Done = 0;
+		fMRS_Done = 0;
+		rob_Done = 0;
+		if(pcAddrQueue = entry[numInstr - 1].address) { //No more instructions in the instruction queue
+			noFetch = 1; 
 		}
 
+		//Decode the Reservation Station to Send the instruction to if there is no stall
+		if(rsStall == 0) {
+			forResStat = entry[pcAddrQueue];
+			switch(forResStat.type) {
+				case ti_Ld:
+					break;
+				case ti_Sd:
+					break;		
+				case ti_Beq:
+					break;		
+				case ti_Bne:
+					break;		
+				case ti_Add:
+					rsType = 0;
+					break;		
+				case ti_Addd:
+					rsType = 1;
+					break;		
+				case ti_Addi:
+					rsType = 0;
+					break;		
+				case ti_Sub:
+					rsType = 0;
+					break;		
+				case ti_Subd = 1:
+					rsType;
+					break;		
+				case ti_Multd:
+					rsType = 2;
+					break;	
+			}
+		}
 		
-		if(inst_stages[0].isValid == 1) {
-			IS[(inst_stages[0].address)/4] = cycle_number;
+		if(rsType == 0) {
+			for(i = 0; i < intAdd_rs; i++) {
+				if(iRS[i].isBusy == 0) {
+					rsStall = 0;
+					iRSFill();
+					break;
+				}
+				rsStall = 1;
+			}
+		}else if(rsType == 1) {
+			for(i = 0; i < FPAdd_rs; i++) {
+				if(iRS[i].isBusy == 0) {
+					rsStall = 0;
+					fARSFill();
+					break;
+				}
+				rsStall = 1;				
+			}			
+		}else{
+			for(i = 0; i < FPMult_rs; i++) {
+				if(iRS[i].isBusy == 0) {
+					rsStall = 0;
+					fMRSFill();
+					break;
+				}
+				rsStall = 1;				
+			}				
 		}
-		if(inst_stages[1].isValid == 1) {
-			EX[(inst_stages[1].address)/4] = cycle_number;
+		
+		
+		
+		//Check if Reservation Stations are empty
+		for(i = 0; i < intAdd_rs; i++) {
+			if(iRS[i].isBusy == 0) {
+				iRS_Done = 1;
+				break;
+			}
 		}
-		if(inst_stages[2].isValid == 1) {
-			MEM[(inst_stages[2].address)/4] = cycle_number;
-		}		
-		if(inst_stages[3].isValid == 1) {
-			WB[(inst_stages[3].address)/4] = cycle_number;
-		}	
-		if(inst_stages[4].isValid == 1) {
-			COM[(inst_stages[4].address)/4] = cycle_number;
+	
+		for(i = 0; i < FPAdd_rs; i++) {
+			if(fARS[i].isBusy == 0) {
+				fARS_Done = 1;
+				break;
+			}
 		}
-		pcAddr = pcAddr + 4;
-		//printPipeline(cycle_number, inst_stages); //print the contents of the pipeline
+	
+		for(i = 0; i < FPMult_rs; i++) {
+			if(fMRS[i].isBusy == 0) {
+				break;
+				fMRS_Done = 1;
+			}
+		}
+
+		//check ROB table
+		for(i = 0; i < ROB_Entries; i++) {
+			if(reOrder[i].type == 10) {
+				rob_Done = 1;
+				break;
+			}
+		}
+		
+		//If there is nothing more to fetch from the instruction queue, all of the reservation stations are empty,
+		//and all of the ROB entries are empty, then there is nothing left to do
+		if(noFetch == 1 && iRS_Done == 1 && fARS_Done == 1 && fMRS_Done == 1 && robDone == 1) {
+			break;
+		}
+		
 		cycle_number++;
 	}
   
