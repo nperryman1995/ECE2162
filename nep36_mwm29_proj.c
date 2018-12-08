@@ -26,7 +26,9 @@ int main(int argc, char **argv)
 	initRegs(&iR, &fR); //initialize integer and floating point regsiters
 	
 	struct instruction entry[INPUT_SIZE]; //instruction struct for taking in new instructions. Instruction buffer
-	struct CDB_buffer cBuffer[INPUT_SIZE]; //cdb buffer entries. capped at input size, but will only utilize a certain amount of them depending on the input parameter
+	struct CDB_buffer iBuffer[INPUT_SIZE]; //cdb buffer entries. capped at input size, but will only utilize a certain amount of them depending on the input parameter
+	struct CDB_buffer fABuffer[INPUT_SIZE];
+	struct CDB_buffer fMBuffer[INPUT_SIZE];
 	struct RS_entry iRS[INPUT_SIZE]; //integer adder reservation station
 	struct RS_entry fARS[INPUT_SIZE]; //fp adder reservation station
 	struct RS_entry fMRS[INPUT_SIZE]; //fp multpilier reservation station
@@ -48,12 +50,19 @@ int main(int argc, char **argv)
 		iRS[i].isBusy = 2;
 		fARS[i].isBusy = 2;
 		fMRS[i].isBusy = 2;
-		cBuffer[i].isValid = 1;
+		iBuffer[i].isValid = 1;
+		fABuffer[i].isValid = 1;
+		fMBuffer[i].isValid = 1;
 	}
 	
 	for(i = 0; i < MAX_ROB; i++) {
 		rat_Table[i].rType = 2;
 		reOrder[i].type = 11;
+		if(i==0) {
+			reOrder[i].head = 1;
+		}else {
+			reOrder[i].head = 0;
+		}
 	}
 	
 	char *fileName; //text file name
@@ -119,7 +128,9 @@ int main(int argc, char **argv)
 	
 	//Initialize cdb buffer
 	for(i = 0; i < CDB_Buffer_Entries; i++) {
-		cBuffer[i].isValid = 0;
+		iBuffer[i].isValid = 0;
+		fABuffer[i].isValid = 0;
+		fMBuffer[i].isValid = 0;
 	}
 	
 	//initialize ROB tables
@@ -221,6 +232,7 @@ int main(int argc, char **argv)
 	struct instruction forResStat;
 	unsigned char rsType; //0 = int RS, 1 = fP Add RS, 2 = fp Mult RS
 	unsigned char rsStall = 0; //0 = rs entry available, 1 = no rs entry available (stall)
+	unsigned char buf_choice = 3;
 	while(1) { //While there are more instructions to fetch and the pipeline is not empty	
 		//Reset Fetch, Reservation Station, and ROB checkers each cycle
 		noFetch = 0;
@@ -231,6 +243,24 @@ int main(int argc, char **argv)
 		if(pcAddrQueue = entry[numInstr - 1].address) { //No more instructions in the instruction queue
 			noFetch = 1; 
 		}
+		
+		buf_choice = cdb_Execute(iBuffer, fABuffer, fMBuffer);
+		switch(buf_choice) {
+			case 0:
+				broadCastCDBVal(iBuffer, iRS, fARS, fMRS, reOrder, INPUT_SIZE);
+				clearBufEntry(iBuffer);
+				break;
+			case 1:
+				broadCastCDBVal(fABuffer, iRS, fARS, fMRS, reOrder, INPUT_SIZE));
+				clearBufEntry(fABuffer);
+				break;
+			case 2:
+				broadCastCDBVal(fMBuffer, iRS, fARS, fMRS, reOrder, INPUT_SIZE));
+				clearBufEntry(fMBuffer);
+				break;
+		}
+		
+		updateROB(reOrder, ROB_Entries, rat_Table, &iR, &fR);
 
 		//Decode the Reservation Station to Send the instruction to if there is no stall
 		if(rsStall == 0) {
@@ -256,8 +286,8 @@ int main(int argc, char **argv)
 				case ti_Sub:
 					rsType = 0;
 					break;		
-				case ti_Subd = 1:
-					rsType;
+				case ti_Subd:
+					rsType = 1;
 					break;		
 				case ti_Multd:
 					rsType = 2;
@@ -269,16 +299,18 @@ int main(int argc, char **argv)
 			for(i = 0; i < intAdd_rs; i++) {
 				if(iRS[i].isBusy == 0) {
 					rsStall = 0;
-					iRSFill();
+					iRSFill(iRS, reOrder, &iR, rat_Table, i, &forResStat, ROB_Entries, MAX_ROB);
+					iRS[i].cyclesLeft = intAdd_EX_Cycles + 1;
 					break;
 				}
 				rsStall = 1;
 			}
 		}else if(rsType == 1) {
 			for(i = 0; i < FPAdd_rs; i++) {
-				if(iRS[i].isBusy == 0) {
+				if(fARS[i].isBusy == 0) {
 					rsStall = 0;
-					fARSFill();
+					fARSFill(fARS, reOrder, &fR, rat_Table, i, &forResStat, ROB_Entries, MAX_ROB);
+					fARS[i].cyclesLeft = FPAdd_EX_Cycles + 1;
 					break;
 				}
 				rsStall = 1;				
@@ -287,14 +319,15 @@ int main(int argc, char **argv)
 			for(i = 0; i < FPMult_rs; i++) {
 				if(iRS[i].isBusy == 0) {
 					rsStall = 0;
-					fMRSFill();
+					fMRSFill(fMRS, reOrder, &fR, rat_Table, i, &forResStat, ROB_Entries, MAX_ROB);
+					fMRS[i].cyclesLeft = FPMult_EX_Cycles+1;
 					break;
 				}
 				rsStall = 1;				
 			}				
 		}
 		
-		
+		RS_Exectute(iRS, fARS, fMRS, INPUT_SIZE, iBuffer, fABuffer, fMBuffer, cycle_number);
 		
 		//Check if Reservation Stations are empty
 		for(i = 0; i < intAdd_rs; i++) {
