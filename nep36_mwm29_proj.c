@@ -33,7 +33,9 @@ int main(int argc, char **argv)
 	struct RS_entry fARS[INPUT_SIZE]; //fp adder reservation station
 	struct RS_entry fMRS[INPUT_SIZE]; //fp multpilier reservation station
 	struct ROB_entry reOrder[MAX_ROB]; //ReOrder Buffer
-	struct RAT_entry rat_Table[MAX_ROB]; //RAT Table
+	struct RAT_entry int_rat_Table[MAX_ROB]; //RAT Tables
+	struct RAT_entry float_rat_Table[MAX_ROB];
+	struct LSQ_entry lsq_Table[INPUT_SIZE]; //load/store queue
 	
 	//IS, EX, MEM, WB, COM
 	//Create lookup tables for instruction start and end cycles at each stage
@@ -53,15 +55,24 @@ int main(int argc, char **argv)
 		iBuffer[i].isValid = 1;
 		fABuffer[i].isValid = 1;
 		fMBuffer[i].isValid = 1;
+		lsq_Table[i].isBusy = 2;
+		if(i == 0) {
+			lsq_Table[i].isHead = 1;
+		}else {
+			lsq_Table[i].isHead = 0;
+		}
 	}
 	
 	for(i = 0; i < MAX_ROB; i++) {
-		rat_Table[i].rType = 2;
+		int_rat_Table[i].rType = 2;
+		float_rat_Table[i].rType = 2;
+		int_rat_Table[i].iOrf = 0;
+		float_rat_Table[i].iOrf = 1;
 		reOrder[i].type = 11;
 		if(i==0) {
-			reOrder[i].head = 1;
+			reOrder[i].isHead = 1;
 		}else {
-			reOrder[i].head = 0;
+			reOrder[i].isHead = 0;
 		}
 	}
 	
@@ -135,7 +146,25 @@ int main(int argc, char **argv)
 	
 	//initialize ROB tables
 	for(i = 0; i < ROB_Entries; i++) {
-		reOrder[i].type = 10;
+			reOrder[i].address = 0;
+			reOrder[i].type = 10;
+			reOrder[i].destReg[0] = 0;
+			reOrder[i].destReg[1] = 0;
+			reOrder[i].destReg[2] = 0;
+			reOrder[i].destReg[3] = 0;
+			reOrder[i].intVal = 0;
+			reOrder[i].floatVal = 0;
+			reOrder[i].finOp = 0;
+			reOrder[i].isHead = 0;
+			if(i == 0) {
+				reOrder[i].isHead = 1;
+			}
+		
+	}
+	
+	//initialize load/store queue
+	for(i = 0; i < ld_sd_rs; i++) {
+		lsq_Table[i].isBusy = 0;
 	}
 	
 	char regtemp[50]; //temporaries for reading in values
@@ -228,6 +257,8 @@ int main(int argc, char **argv)
 	unsigned char fARS_Done = 0;
 	unsigned char fMRS_Done = 0;
 	unsigned char rob_Done = 0;
+	unsigned char cdbDone = 0;
+	unsigned char lsqDone = 0;
 	uint32_t pcAddrQueue = 0;
 	struct instruction forResStat;
 	unsigned char rsType; //0 = int RS, 1 = fP Add RS, 2 = fp Mult RS
@@ -235,40 +266,28 @@ int main(int argc, char **argv)
 	unsigned char buf_choice = 3;
 	while(1) { //While there are more instructions to fetch and the pipeline is not empty	
 		//Reset Fetch, Reservation Station, and ROB checkers each cycle
-		noFetch = 0;
-		iRS_Done = 0;
-		fARS_Done = 0;
-		fMRS_Done = 0;
-		rob_Done = 0;
-		if(pcAddrQueue = entry[numInstr - 1].address) { //No more instructions in the instruction queue
-			noFetch = 1; 
-		}
+		iRS_Done = 1;
+		fARS_Done = 1;
+		fMRS_Done = 1;
+		rob_Done = 1;
+		cdbDone = 1;
+		lsqDone = 1;
 		
-		buf_choice = cdb_Execute(iBuffer, fABuffer, fMBuffer);
-		switch(buf_choice) {
-			case 0:
-				broadCastCDBVal(iBuffer, iRS, fARS, fMRS, reOrder, INPUT_SIZE);
-				clearBufEntry(iBuffer);
-				break;
-			case 1:
-				broadCastCDBVal(fABuffer, iRS, fARS, fMRS, reOrder, INPUT_SIZE));
-				clearBufEntry(fABuffer);
-				break;
-			case 2:
-				broadCastCDBVal(fMBuffer, iRS, fARS, fMRS, reOrder, INPUT_SIZE));
-				clearBufEntry(fMBuffer);
-				break;
-		}
-		
-		updateROB(reOrder, ROB_Entries, rat_Table, &iR, &fR);
-
+		updateROB(lsq_Table, ld_sd_rs, ld_sd_MEM_cycles, MEM, reOrder, ROB_Entries, int_rat_Table, float_rat_Table, &iR, &fR, WB, COM, cycle_number, memData);
 		//Decode the Reservation Station to Send the instruction to if there is no stall
-		if(rsStall == 0) {
-			forResStat = entry[pcAddrQueue];
+		if(rsStall == 0 && noFetch == 0) {
+			forResStat = entry[pcAddrQueue/4];
+			if(pcAddrQueue == entry[numInstr - 1].address) {
+				noFetch = 1;
+			}else {
+				pcAddrQueue = pcAddrQueue + 4;
+			}
 			switch(forResStat.type) {
 				case ti_Ld:
+					rsType = 3;
 					break;
 				case ti_Sd:
+					rsType = 3;
 					break;		
 				case ti_Beq:
 					break;		
@@ -299,8 +318,12 @@ int main(int argc, char **argv)
 			for(i = 0; i < intAdd_rs; i++) {
 				if(iRS[i].isBusy == 0) {
 					rsStall = 0;
-					iRSFill(iRS, reOrder, &iR, rat_Table, i, &forResStat, ROB_Entries, MAX_ROB);
-					iRS[i].cyclesLeft = intAdd_EX_Cycles + 1;
+					iRSFill(iRS, reOrder, &iR, int_rat_Table, i, &forResStat, ROB_Entries, MAX_ROB);
+					iRS[i].cyclesLeft = intAdd_EX_Cycles;
+					IS[iRS[i].address/4] = cycle_number;
+					if(noFetch == 1) {
+						rsType = 4;
+					}
 					break;
 				}
 				rsStall = 1;
@@ -309,59 +332,126 @@ int main(int argc, char **argv)
 			for(i = 0; i < FPAdd_rs; i++) {
 				if(fARS[i].isBusy == 0) {
 					rsStall = 0;
-					fARSFill(fARS, reOrder, &fR, rat_Table, i, &forResStat, ROB_Entries, MAX_ROB);
-					fARS[i].cyclesLeft = FPAdd_EX_Cycles + 1;
+					fARSFill(fARS, reOrder, &fR, float_rat_Table, i, &forResStat, ROB_Entries, MAX_ROB);
+					fARS[i].cyclesLeft = FPAdd_EX_Cycles;
+					IS[fARS[i].address/4] = cycle_number;
+					if(noFetch == 1) {
+						rsType = 4;
+					}
 					break;
 				}
 				rsStall = 1;				
 			}			
-		}else{
+		}else if(rsType == 2){
 			for(i = 0; i < FPMult_rs; i++) {
-				if(iRS[i].isBusy == 0) {
+				if(fMRS[i].isBusy == 0) {
 					rsStall = 0;
-					fMRSFill(fMRS, reOrder, &fR, rat_Table, i, &forResStat, ROB_Entries, MAX_ROB);
-					fMRS[i].cyclesLeft = FPMult_EX_Cycles+1;
+					fMRSFill(fMRS, reOrder, &fR, float_rat_Table, i, &forResStat, ROB_Entries, MAX_ROB);
+					fMRS[i].cyclesLeft = FPMult_EX_Cycles;
+					IS[fMRS[i].address/4] = cycle_number;
+					if(noFetch == 1) {
+						rsType = 4;
+					}
 					break;
 				}
 				rsStall = 1;				
 			}				
+		}else if(rsType == 3) {
+			for(i = 0; i < ld_sd_rs; i++) {
+				if(lsq_Table[i].isBusy == 0) {
+					rsStall = 0;
+					lsqFill(lsq_Table, reOrder, &iR, &fR, int_rat_Table, float_rat_Table, i, &forResStat, ROB_Entries, MAX_ROB);
+					lsq_Table[i].ex_cyclesLeft = ld_sd_EX_Cycles;
+					lsq_Table[i].mem_cyclesLeft = ld_sd_MEM_cycles;
+					IS[lsq_Table[i].address/4] = cycle_number;
+					if(noFetch == 1) {
+						rsType = 4;
+					}
+					break;
+				}
+				rsStall = 1;
+			}
 		}
 		
-		RS_Exectute(iRS, fARS, fMRS, INPUT_SIZE, iBuffer, fABuffer, fMBuffer, cycle_number);
+		RS_Execute(memData, MEM, ld_sd_MEM_cycles, ld_sd_EX_Cycles, lsq_Table, ld_sd_rs, reOrder, ROB_Entries, int_rat_Table, float_rat_Table, iRS, fARS, fMRS, INPUT_SIZE, iBuffer, fABuffer, fMBuffer, cycle_number, intAdd_EX_Cycles, FPAdd_EX_Cycles, FPMult_EX_Cycles, EX);
+		
+		buf_choice = cdb_Execute(iBuffer, fABuffer, fMBuffer);
+		switch(buf_choice) {
+			case 0:
+				broadCastCDBVal(iBuffer, iRS, fARS, fMRS, reOrder, INPUT_SIZE, lsq_Table, ld_sd_rs);
+				clearBufEntry(iBuffer, INPUT_SIZE);
+				break;
+			case 1:
+				broadCastCDBVal(fABuffer, iRS, fARS, fMRS, reOrder, INPUT_SIZE, lsq_Table, ld_sd_rs);
+				clearBufEntry(fABuffer, INPUT_SIZE);
+				break;
+			case 2:
+				broadCastCDBVal(fMBuffer, iRS, fARS, fMRS, reOrder, INPUT_SIZE, lsq_Table, ld_sd_rs);
+				clearBufEntry(fMBuffer, INPUT_SIZE);
+				break;
+		}
+		
 		
 		//Check if Reservation Stations are empty
 		for(i = 0; i < intAdd_rs; i++) {
-			if(iRS[i].isBusy == 0) {
-				iRS_Done = 1;
+			if(iRS[i].isBusy == 1) {
+				iRS_Done = 0;
 				break;
 			}
 		}
 	
 		for(i = 0; i < FPAdd_rs; i++) {
-			if(fARS[i].isBusy == 0) {
-				fARS_Done = 1;
+			if(fARS[i].isBusy == 1) {
+				fARS_Done = 0;
 				break;
 			}
 		}
 	
 		for(i = 0; i < FPMult_rs; i++) {
-			if(fMRS[i].isBusy == 0) {
+			if(fMRS[i].isBusy == 1) {
+				fMRS_Done = 0;
 				break;
-				fMRS_Done = 1;
 			}
 		}
 
 		//check ROB table
 		for(i = 0; i < ROB_Entries; i++) {
-			if(reOrder[i].type == 10) {
-				rob_Done = 1;
+			if(reOrder[i].type != 10) {
+				rob_Done = 0;
 				break;
 			}
 		}
 		
+		for(i = 0; i < CDB_Buffer_Entries; i++) {
+			if(iBuffer[i].cdbBuffer.isBusy == 1) {
+				cdbDone = 0;
+				break;
+			}
+			if(fABuffer[i].cdbBuffer.isBusy == 1) {
+				cdbDone = 0;
+				break;
+			}
+			if(fMBuffer[i].cdbBuffer.isBusy == 1) {
+				cdbDone = 0;
+				break;
+			}
+		}
+		
+		//Check load/store queue
+		for(i = 0; i < ld_sd_rs; i++) {
+			if(lsq_Table[i].isBusy == 1) {
+				lsqDone = 0;
+				break;
+			}
+		}
+		
+		//print_ROB_Table(reOrder,ROB_Entries);
+		//print_RS_Table(iRS, intAdd_rs);
+		//print_LSQ_Queue(lsq_Table, ld_sd_rs);
+		//printf("cycle: %d\n", cycle_number);
 		//If there is nothing more to fetch from the instruction queue, all of the reservation stations are empty,
 		//and all of the ROB entries are empty, then there is nothing left to do
-		if(noFetch == 1 && iRS_Done == 1 && fARS_Done == 1 && fMRS_Done == 1 && robDone == 1) {
+		if(noFetch == 1 && iRS_Done == 1 && fARS_Done == 1 && fMRS_Done == 1 && rob_Done == 1 && cdbDone == 1 && lsqDone == 1) {
 			break;
 		}
 		

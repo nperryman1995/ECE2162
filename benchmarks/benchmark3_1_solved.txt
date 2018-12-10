@@ -18,9 +18,9 @@ F1 1.1
 F2 2.2
 MEM 0 48879
 MEM 4 4.4
-Ld R11, 0(R1)
+Ld F12, 0(R1)
 Ld F11, 4(R1)
-Sd R10, 4(R2)
+Sd F1, 4(R2)
 Sd F2, 12(R4)
 // Input file end
 
@@ -37,15 +37,15 @@ R2 4
 R3 8
 R4 12
 R10 57005
-R11 48879
 
 // Non zero float registers
 F1 1.1
 F2 2.2
 F11 4.4
+F12 48879
 
 // Non zero mem locations
 MEM 0 48879
 MEM 4 4.4
-MEM 8 57005
+MEM 8 48879
 MEM 24 2.2

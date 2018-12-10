@@ -17,7 +17,7 @@ MEM 4 4.4
 Mult.d F3, F1, F2
 Sd F3, 0(R4)
 Ld F4, 4(R3)
-Sd R10, 8(R2)
-Ld R11, 12(R1)
-Sd R1, 0(R1)
-Sd R2, 0(R2)
+Sd F2, 8(R2)
+Ld F11, 12(R1)
+Sd F1, 0(R1)
+Sd F2, 0(R2)
