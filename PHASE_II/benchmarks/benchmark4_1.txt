@@ -1,0 +1,33 @@
+2 1 0 1
+2 20 0 1
+2 320 0 1
+2 1 80 1
+128 1
+8 4 2
+12
+R1 0
+R2 4
+R3 8
+R4 12
+R5 5
+R6 6
+R10 57005
+R11 1234
+F1 1.1
+F2 2.2
+F3 3.3
+F4 4.4
+MEM 0 48879
+MEM 4 4.4
+Mult.d F5, F1, F2
+Mult.d F6, F1, F2
+Mult.d F7, F1, F2
+Sd F3, 0(R4)
+Ld F4, 0(R2)
+Sd R10, 0(R3)
+Sub.d F8, F2, F1
+Add.d F9, F2, F1
+Add.d F10, F2, F1
+Add R7, R5, R6
+Sub R8, R6, R5
+Add R9, R5, R6

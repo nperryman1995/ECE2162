@@ -1,0 +1,84 @@
+// This trace has bottlenecks in the reservation stations
+// note: the weird number of cycles per instruction is to ensure no conflict on the CDB
+
+// Input file start
+2 1 0 1
+2 20 0 1
+2 320 0 1
+2 1 80 1
+128 1
+8 4 2
+12
+R1 0
+R2 4
+R3 8
+R4 12
+R5 5
+R6 6
+R10 57005
+R11 1234
+F1 1.1
+F2 2.2
+F3 3.3
+F4 4.4
+MEM 0 48879
+MEM 4 4.4
+Mult.d F5, F1, F2
+Mult.d F6, F1, F2
+Mult.d F7, F1, F2
+Sd F3, 0(R4)
+Ld F4, 0(R2)
+Sd R10, 0(R3)
+Sub.d F8, F2, F1
+Add.d F9, F2, F1
+Add.d F10, F2, F1
+Add R7, R5, R6
+Sub R8, R6, R5
+Add R9, R5, R6
+// Input file end
+
+// Expected trace
+---- Instruction ----|---- PC ----|---- ISSUE ----|---- EX ----|---- MEM ----|---- WB ----|---- COMMIT ----|
+Mult.d F5, F1, F2    | 0x00000000 | 1             | 2 - 321    | X           | 322        | 323            |
+Mult.d F6, F1, F2    | 0x00000004 | 2             | 322 - 641  | X           | 642        | 643            |
+Mult.d F7, F1, F2    | 0x00000008 | 323           | 642 - 961  | X           | 962        | 962            |
+Sd F3, 0(R4)         | 0x0000000C | 324           | 325        | 326 - 405   | X          | 963            |
+Ld F4, 0(R2)         | 0x00000010 | 325           | 326        | 406 - 485   | 485        | 964            |
+Sd R10, 0(R3)        | 0x00000014 | 406           | 407        | 486 - 565   | X          | 965            |
+Sub.d F8, F2, F1     | 0x00000018 | 407           | 408 - 427  | X           | 428        | 966            |
+Add.d F9, F2, F1     | 0x0000001C | 408           | 428 - 447  | X           | 448        | 967            |
+Add.d F10, F2, F1    | 0x00000020 | 429           | 448 - 467  | X           | 468        | 968            |
+Add R7, R5, R6       | 0x00000024 | 430           | 431        | X           | 432        | 969            |
+Sub R8, R6, R5       | 0x00000028 | 431           | 432        | X           | 433        | 970            |
+Add R9, R5, R6       | 0x0000002C | 432           | 433        | X           | 434        | 971            |
+
+// Non zero int registers
+R1 0
+R2 4
+R3 8
+R4 12
+R5 5
+R6 6
+R7 11
+R8 1
+R9 11
+R10 57005
+R11 1234
+
+// Non zero float registers
+F1 1.1
+F2 2.2
+F3 3.3
+F4 4.4
+F5 2.42
+F6 2.42
+F7 2.42
+F8 1.1
+F9 3.3
+F10 3.3
+
+// Non zero mem locations
+MEM 0 0
+MEM 4 4
+MEM 8 57005
+MEM 12 3.3

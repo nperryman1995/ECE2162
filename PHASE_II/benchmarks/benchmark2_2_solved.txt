@@ -1,0 +1,45 @@
+// This trace has true and false data dependencies (RAW WAR and WAW) in the integer and floating point data paths
+// note: all functional units are set to 1 cycle execution in order to avoid collisions at the CDB
+
+// Input file start
+4 1 0 1
+4 1 0 1
+4 1 0 1
+4 1 4 1
+128 1
+2 3 0
+6
+R2 2
+R3 3
+F1 1.1
+F2 2.2
+F3 3.3
+Add R1, R0, R2
+Add R1, R1, R3
+Addi R1, R1, 77
+Add.d F4, F1, F2
+Mult.d F4, F4, F1
+Add.d F4, F4, F3
+// Input file end
+
+// Expected trace
+---- Instruction ----|---- PC ----|---- ISSUE ----|---- EX ----|---- MEM ----|---- WB ----|---- COMMIT ----|
+Add R1, R0, R2       | 0x00000000 | 1             | 2          | X           | 3          | 4              |
+Add R1, R1, R3       | 0x00000004 | 2             | 4          | X           | 5          | 6              |
+Addi R1, R1, 77      | 0x00000008 | 3             | 6          | X           | 7          | 8              |
+Add.d F4, F1, F2     | 0x0000000C | 4             | 5          | X           | 6          | 9              |
+Mult.d F4, F4, F1    | 0x00000010 | 5             | 7          | X           | 8          | 10             |
+Add.d F4, F4, F3     | 0x00000014 | 6             | 9          | X           | 10         | 11             |
+
+// Non zero int registers
+R1 82
+R2 2
+R3 3
+
+// Non zero float registers
+F1 1.1
+F2 2.2
+F3 3.3
+F4 6.93
+
+// Non zero mem locations
