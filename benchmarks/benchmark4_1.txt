@@ -24,7 +24,7 @@ Mult.d F6, F1, F2
 Mult.d F7, F1, F2
 Sd F3, 0(R4)
 Ld F4, 0(R2)
-Sd R10, 0(R3)
+Sd F4, 0(R3)
 Sub.d F8, F2, F1
 Add.d F9, F2, F1
 Add.d F10, F2, F1
