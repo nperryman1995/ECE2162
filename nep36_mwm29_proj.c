@@ -13,14 +13,9 @@
 #include <ctype.h>
 #include "struct_defs.h"
 
-/*Definitions*/
-#define INPUT_SIZE 100 //amount of instructions that can be taken in by a file
-#define MAX_ROB 1000 //maximum size of ROB Table
-
 int main(int argc, char **argv)
 {
 	unsigned int cycle_number = 1;
-	uint32_t pcAddr = 0;
 	struct int_Reg iR;
 	struct float_Reg fR;
 	initRegs(&iR, &fR); //initialize integer and floating point regsiters
@@ -36,14 +31,16 @@ int main(int argc, char **argv)
 	struct RAT_entry int_rat_Table[MAX_ROB]; //RAT Tables
 	struct RAT_entry float_rat_Table[MAX_ROB];
 	struct LSQ_entry lsq_Table[INPUT_SIZE]; //load/store queue
+	struct recover_Program RIP[50]; //For branch recovery
+	struct BTB btbBuffer[8]; //branch target buffer
+	struct branchHistory bHist[INPUT_SIZE]; //History of branch instruction
 	
 	//IS, EX, MEM, WB, COM
 	//Create lookup tables for instruction start and end cycles at each stage
-	//[i][0] = start cycle
-	//[i][1] = end cycle
 	uint32_t IS[INPUT_SIZE], EX[INPUT_SIZE], MEM[INPUT_SIZE], WB[INPUT_SIZE], COM[INPUT_SIZE]; 
+	uint32_t reset[INPUT_SIZE];
 	int i;
-	for(i = 0; i < INPUT_SIZE; i++) {
+	for(i = 0; i < INPUT_SIZE; i++) { //Initialize Entries
 		IS[i] = 0;
 		EX[i] = 0;
 		MEM[i] = 0;
@@ -61,9 +58,17 @@ int main(int argc, char **argv)
 		}else {
 			lsq_Table[i].isHead = 0;
 		}
+		reset[i] = -1;
+		bHist[i].isValid = 0;
 	}
 	
-	for(i = 0; i < MAX_ROB; i++) {
+	for(i = 0; i < 8; i++) { //Initialize Entries
+		btbBuffer[i].BTB_array.isValid = 1;
+		btbBuffer[i].BTB_array.type = 10;
+		btbBuffer[i].nextAddr = 0;
+	}
+	
+	for(i = 0; i < MAX_ROB; i++) { //Initialize Entries
 		int_rat_Table[i].rType = 2;
 		float_rat_Table[i].rType = 2;
 		int_rat_Table[i].iOrf = 0;
@@ -251,7 +256,7 @@ int main(int argc, char **argv)
 		printf("Mem[8] = %.2f\n", temporaryMem.floatMem);
 	} //end if else*/
 	
-	//IS, EX, MEM, WB, COM
+	//Flags to check if certain fields are empty
 	unsigned char noFetch = 0;
 	unsigned char iRS_Done = 0;
 	unsigned char fARS_Done = 0;
@@ -260,12 +265,13 @@ int main(int argc, char **argv)
 	unsigned char cdbDone = 0;
 	unsigned char lsqDone = 0;
 	uint32_t pcAddrQueue = 0;
+	uint32_t predAddr = 0;
 	struct instruction forResStat;
 	unsigned char rsType; //0 = int RS, 1 = fP Add RS, 2 = fp Mult RS
 	unsigned char rsStall = 0; //0 = rs entry available, 1 = no rs entry available (stall)
 	unsigned char buf_choice = 3;
 	while(1) { //While there are more instructions to fetch and the pipeline is not empty	
-		//Reset Fetch, Reservation Station, and ROB checkers each cycle
+		//Reset flags at the beginning
 		iRS_Done = 1;
 		fARS_Done = 1;
 		fMRS_Done = 1;
@@ -273,16 +279,43 @@ int main(int argc, char **argv)
 		cdbDone = 1;
 		lsqDone = 1;
 		
-		updateROB(lsq_Table, ld_sd_rs, ld_sd_MEM_cycles, MEM, reOrder, ROB_Entries, int_rat_Table, float_rat_Table, &iR, &fR, WB, COM, cycle_number, memData);
+		updateROB(lsq_Table, ld_sd_rs, ld_sd_MEM_cycles, MEM, reOrder, ROB_Entries, int_rat_Table, float_rat_Table, &iR, &fR, WB, COM, cycle_number, memData); //commit ROB entry 
+		
 		//Decode the Reservation Station to Send the instruction to if there is no stall
-		if(rsStall == 0 && noFetch == 0) {
-			forResStat = entry[pcAddrQueue/4];
-			if(pcAddrQueue == entry[numInstr - 1].address) {
+		if(rsStall == 0 && noFetch == 0) { //If an instruction is not waiting for a reservation station and there are more instructions to fetch
+			forResStat = entry[pcAddrQueue/4]; //fetch instruction and decode
+			if(pcAddrQueue == entry[numInstr - 1].address) { //If at last instruction, raise the flag to not fetch any more instructions unless disproven later
 				noFetch = 1;
-			}else {
-				pcAddrQueue = pcAddrQueue + 4;
 			}
-			switch(forResStat.type) {
+			uint32_t getBTB = pcAddrQueue & 0x6; //get index for BTB
+			int j;
+			if(forResStat.type == ti_Beq || forResStat.type == ti_Bne) { //find a free entry in the branch history table and update it if a branch
+				for(j = 0; j < INPUT_SIZE; j++) {
+					if(bHist[j].isValid == 0) {
+						bHist[j].isValid = 1;
+						bHist[j].br = forResStat;
+						bHist[j].pcPlusFour = pcAddrQueue + 4;
+						bHist[j].takenAddr = -1;
+						break;
+					}
+				}
+			}
+			if(btbBuffer[getBTB].BTB_array.address == pcAddrQueue && btbBuffer[getBTB].BTB_array.type != 10) { //if the BTB contains a prediction for this address, take it, otherwise do not take it
+				if(forResStat.type == ti_Beq || forResStat.type == ti_Bne) {
+					pcAddrQueue = btbBuffer[getBTB].nextAddr;
+					bHist[j].predAddr = pcAddrQueue;
+					bHist[j].isTaken = 1;
+				}
+			}else{
+				if(pcAddrQueue != entry[numInstr - 1].address) {
+					pcAddrQueue = pcAddrQueue + 4;
+				}
+				if(forResStat.type == ti_Beq || forResStat.type == ti_Bne) {
+					bHist[j].predAddr = pcAddrQueue;
+					bHist[j].isTaken = 0;
+				}
+			}
+			switch(forResStat.type) { //decode instruction type
 				case ti_Ld:
 					rsType = 3;
 					break;
@@ -290,8 +323,10 @@ int main(int argc, char **argv)
 					rsType = 3;
 					break;		
 				case ti_Beq:
+					rsType = 4;
 					break;		
 				case ti_Bne:
+					rsType = 4;
 					break;		
 				case ti_Add:
 					rsType = 0;
@@ -313,8 +348,8 @@ int main(int argc, char **argv)
 					break;	
 			}
 		}
-		
-		if(rsType == 0) {
+
+		if(rsType == 0) { //Put instruction into integer add reservation station if there is a spot available, otherwise stall and wait until there is one available
 			for(i = 0; i < intAdd_rs; i++) {
 				if(iRS[i].isBusy == 0) {
 					rsStall = 0;
@@ -322,13 +357,13 @@ int main(int argc, char **argv)
 					iRS[i].cyclesLeft = intAdd_EX_Cycles;
 					IS[iRS[i].address/4] = cycle_number;
 					if(noFetch == 1) {
-						rsType = 4;
+						rsType = 5;
 					}
 					break;
 				}
 				rsStall = 1;
 			}
-		}else if(rsType == 1) {
+		}else if(rsType == 1) { //Put instruction into floating point add reservation station if there is a spot available, otherwise stall and wait until there is one available
 			for(i = 0; i < FPAdd_rs; i++) {
 				if(fARS[i].isBusy == 0) {
 					rsStall = 0;
@@ -336,13 +371,13 @@ int main(int argc, char **argv)
 					fARS[i].cyclesLeft = FPAdd_EX_Cycles;
 					IS[fARS[i].address/4] = cycle_number;
 					if(noFetch == 1) {
-						rsType = 4;
+						rsType = 5;
 					}
 					break;
 				}
 				rsStall = 1;				
 			}			
-		}else if(rsType == 2){
+		}else if(rsType == 2){ //Put instruction into floating point multiplication reservation station if there is a spot available, otherwise stall and wait until there is one available
 			for(i = 0; i < FPMult_rs; i++) {
 				if(fMRS[i].isBusy == 0) {
 					rsStall = 0;
@@ -350,13 +385,13 @@ int main(int argc, char **argv)
 					fMRS[i].cyclesLeft = FPMult_EX_Cycles;
 					IS[fMRS[i].address/4] = cycle_number;
 					if(noFetch == 1) {
-						rsType = 4;
+						rsType = 5;
 					}
 					break;
 				}
 				rsStall = 1;				
 			}				
-		}else if(rsType == 3) {
+		}else if(rsType == 3) { //Put a load/store in the load/store queue if there is a spot available, otherwise stall and wait until there is one available
 			for(i = 0; i < ld_sd_rs; i++) {
 				if(lsq_Table[i].isBusy == 0) {
 					rsStall = 0;
@@ -365,17 +400,118 @@ int main(int argc, char **argv)
 					lsq_Table[i].mem_cyclesLeft = ld_sd_MEM_cycles;
 					IS[lsq_Table[i].address/4] = cycle_number;
 					if(noFetch == 1) {
-						rsType = 4;
+						rsType = 5;
 					}
 					break;
 				}
 				rsStall = 1;
 			}
+		}else if(rsType == 4) { //Put a branch instruction into the integer add reservation station if there is a spot available, otherwise stall and wait until there is one available
+			for(i = 0; i < intAdd_rs; i++) {
+				if(iRS[i].isBusy == 0) {
+					rsStall = 0;
+					iRSBranchFill(iRS, &iR, i, &forResStat, int_rat_Table, reOrder);
+					iRS[i].cyclesLeft = intAdd_EX_Cycles;
+					IS[iRS[i].address/4] = cycle_number;
+					if(noFetch == 1) {
+						rsType = 5;
+					}
+					copyProgramCDB(&RIP[iRS[i].address/4], iBuffer, fABuffer, fMBuffer); //save program state if a branch instruciton
+					copyProgramRS(&RIP[iRS[i].address/4], iRS, fARS, fMRS);
+					copyProgramLSQ(&RIP[iRS[i].address/4], lsq_Table);
+					copyProgramRATROB(&RIP[iRS[i].address/4], int_rat_Table, float_rat_Table, reOrder);
+					copyProgramREG(&RIP[iRS[i].address/4], iR, fR);
+					copyProgramINT(&RIP[iRS[i].address/4], cycle_number, pcAddrQueue, noFetch);
+					copyProgramMEM(&RIP[iRS[i].address/4], memData);
+					copyProgramTAB(&RIP[iRS[i].address/4], IS, EX, MEM, WB, COM);
+					break;
+				}
+				rsStall = 1;
+			}			
 		}
 		
-		RS_Execute(memData, MEM, ld_sd_MEM_cycles, ld_sd_EX_Cycles, lsq_Table, ld_sd_rs, reOrder, ROB_Entries, int_rat_Table, float_rat_Table, iRS, fARS, fMRS, INPUT_SIZE, iBuffer, fABuffer, fMBuffer, cycle_number, intAdd_EX_Cycles, FPAdd_EX_Cycles, FPMult_EX_Cycles, EX);
+		//Execute the instructions in the reservation stations if they are ready
+		predAddr = RS_Execute(bHist, memData, MEM, ld_sd_MEM_cycles, ld_sd_EX_Cycles, lsq_Table, ld_sd_rs, reOrder, ROB_Entries, int_rat_Table, float_rat_Table, iRS, fARS, fMRS, INPUT_SIZE, iBuffer, fABuffer, fMBuffer, cycle_number, intAdd_EX_Cycles, FPAdd_EX_Cycles, FPMult_EX_Cycles, EX);
+		if(predAddr != -1) { //if branch instruct just executed
+			//printf("Pred Address: %d\n", predAddr);
+			if(reset[predAddr] == 1) {
+				reset[predAddr] = 0;
+			}else{
+				int j;
+				for(j = 0; j < INPUT_SIZE; j++) { //look up entry in the branch history table
+					if(bHist[j].isValid == 1) {
+						if(bHist[j].takenAddr == predAddr) {
+							break;
+						}
+					}
+				}
+				uint32_t getBTB = bHist[j].br.address & 0x6;
+				if(bHist[j].isTaken == 1) {
+					if(predAddr != bHist[j].predAddr) { //branch not taken, predicted taken
+						reset[predAddr] = 1;
+						btbBuffer[getBTB].BTB_array.type = 10;
+						resetProgramCDB(&RIP[bHist[j].br.address/4], iBuffer, fABuffer, fMBuffer); //reset the program values if there was a misprediction
+						resetProgramRS(&RIP[bHist[j].br.address/4], iRS, fARS, fMRS);
+						resetProgramLSQ(&RIP[bHist[j].br.address/4], lsq_Table);
+						resetProgramRATROB(&RIP[bHist[j].br.address/4], int_rat_Table, float_rat_Table, reOrder);
+						resetProgramREG(&RIP[bHist[j].br.address/4], &iR, &fR);
+						resetProgramINT(&RIP[bHist[j].br.address/4], &cycle_number, &pcAddrQueue, &noFetch);
+						resetProgramMEM(&RIP[bHist[j].br.address/4], memData);
+						resetProgramTAB(&RIP[bHist[j].br.address/4], IS, EX, MEM, WB, COM);
+						}
+				}else {
+					if(predAddr != bHist[j].pcPlusFour) { //branch taken, predicted not taken
+						reset[predAddr] = 1;
+						btbBuffer[getBTB].nextAddr = predAddr;
+						btbBuffer[getBTB].BTB_array = bHist[j].br;
+						resetProgramCDB(&RIP[bHist[j].br.address/4], iBuffer, fABuffer, fMBuffer); //reset the program values if there was a misprediction
+						resetProgramRS(&RIP[bHist[j].br.address/4], iRS, fARS, fMRS);
+						resetProgramLSQ(&RIP[bHist[j].br.address/4], lsq_Table);
+						resetProgramRATROB(&RIP[bHist[j].br.address/4], int_rat_Table, float_rat_Table, reOrder);
+						resetProgramREG(&RIP[bHist[j].br.address/4], &iR, &fR);
+						resetProgramINT(&RIP[bHist[j].br.address/4], &cycle_number, &pcAddrQueue, &noFetch);
+						resetProgramMEM(&RIP[bHist[j].br.address/4], memData);
+						resetProgramTAB(&RIP[bHist[j].br.address/4], IS, EX, MEM, WB, COM);
+						pcAddrQueue = predAddr;
+						}
+				}
+				bHist[j].isValid = 0;
+				bHist[j].takenAddr = -1;
+			}
+		}
 		
-		buf_choice = cdb_Execute(iBuffer, fABuffer, fMBuffer);
+		//Some branch instructions cause some issue with the integer reservation station (and possibly some other unknown FUs)
+		//causing the entry to wait on a value in the reorder buffer that doesn't exist (i.e., the instruction waits for 
+		//a reorder buffer value that will never be computed as there is no entry in that particular spot in the reorder buffer)
+		//If this happens this for loop just updates the values with values in the ARF
+		for(i = 0; i < INPUT_SIZE; i++) {
+			if(iRS[i].isBusy == 1) {
+				if(iRS[i].tag1 != -1) {
+					if(reOrder[iRS[i].tag1].type == 10) {
+						iRS[i].tag1 = -1;
+						iRS[i].iVal1 = iR.R_num[regLookup(entry[iRS[i].address/4].Rs)];
+					}
+				}
+				if(iRS[i].tag2 != -1) {
+					if(reOrder[iRS[i].tag2].type == 10) {
+						iRS[i].tag2 = -1;
+						switch(entry[iRS[i].address/4].type) {
+							case ti_Add:
+								iRS[i].iVal2 = iR.R_num[regLookup(entry[iRS[i].address/4].Rs)];
+								break;
+							case ti_Sub:
+								iRS[i].iVal2 = iR.R_num[regLookup(entry[iRS[i].address/4].Rs)];
+								break;
+							case ti_Addi:
+								iRS[i].iVal2 = entry[iRS[i].address/4].offset;
+								break;
+						}
+					}
+				}
+			}
+		}
+		
+		buf_choice = cdb_Execute(iBuffer, fABuffer, fMBuffer); //choose which cdb buffer will broadcast on the cdb next based on arrival cycle, then broadcast the value on the cdb
 		switch(buf_choice) {
 			case 0:
 				broadCastCDBVal(iBuffer, iRS, fARS, fMRS, reOrder, INPUT_SIZE, lsq_Table, ld_sd_rs);
@@ -422,6 +558,7 @@ int main(int argc, char **argv)
 			}
 		}
 		
+		//check cdb buffer entries
 		for(i = 0; i < CDB_Buffer_Entries; i++) {
 			if(iBuffer[i].cdbBuffer.isBusy == 1) {
 				cdbDone = 0;
@@ -445,12 +582,20 @@ int main(int argc, char **argv)
 			}
 		}
 		
+		//if the pc decreases due to a branch, reset the noFetch flag
+		if(pcAddrQueue < entry[numInstr - 1].address) {
+			noFetch = 0;
+		}
+		
 		//print_ROB_Table(reOrder,ROB_Entries);
 		//print_RS_Table(iRS, intAdd_rs);
 		//print_LSQ_Queue(lsq_Table, ld_sd_rs);
 		//printf("cycle: %d\n", cycle_number);
+		//printf("Address: %d\n", pcAddrQueue);
+		
 		//If there is nothing more to fetch from the instruction queue, all of the reservation stations are empty,
-		//and all of the ROB entries are empty, then there is nothing left to do
+		//and all of the ROB entries are empty, there is nothing in the cdb buffers, and the load/store queue is empty, then
+		//there is nothing left to do
 		if(noFetch == 1 && iRS_Done == 1 && fARS_Done == 1 && fMRS_Done == 1 && rob_Done == 1 && cdbDone == 1 && lsqDone == 1) {
 			break;
 		}
@@ -458,6 +603,7 @@ int main(int argc, char **argv)
 		cycle_number++;
 	}
   
+	//Show results of program and nonzero values for the integer registers, floating point registers, and memory
 	printResults(entry, IS, EX, MEM, WB, COM, numInstr);
 	showIntReg(&iR);
 	showFPReg(&fR);
