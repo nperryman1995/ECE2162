@@ -591,12 +591,16 @@ int main(int argc, char **argv)
 		//print_RS_Table(iRS, intAdd_rs);
 		//print_LSQ_Queue(lsq_Table, ld_sd_rs);
 		//printf("cycle: %d\n", cycle_number);
-		//printf("Address: %d\n", pcAddrQueue);
+		printf("Address: %d\n", pcAddrQueue);
 		
 		//If there is nothing more to fetch from the instruction queue, all of the reservation stations are empty,
 		//and all of the ROB entries are empty, there is nothing in the cdb buffers, and the load/store queue is empty, then
 		//there is nothing left to do
 		if(noFetch == 1 && iRS_Done == 1 && fARS_Done == 1 && fMRS_Done == 1 && rob_Done == 1 && cdbDone == 1 && lsqDone == 1) {
+			break;
+		}
+		
+		if(cycle_number == 125) {
 			break;
 		}
 		
